@@ -1,0 +1,93 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) adapted for High-Performance Mentoring",
+  "global_vibe": "Moderno e ousado (Modern and bold), authoritative, premium, and focused on hyper-growth.",
+  "language": "pt-BR",
+  "colors": {
+    "background": "#0A0A0A",
+    "surface": "#141414",
+    "surface_secondary": "#1E1E1E",
+    "primary": "#FF4500",
+    "primary_hover": "#E03E00",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "border": "#27272A",
+    "danger": "#EF4444",
+    "success": "#10B981"
+  },
+  "typography": {
+    "heading_font": "Cabinet Grotesk",
+    "body_font": "Manrope",
+    "h1": "text-4xl md:text-5xl lg:text-6xl tracking-tighter font-black",
+    "h2": "text-2xl md:text-3xl lg:text-4xl tracking-tight font-bold",
+    "h3": "text-xl md:text-2xl tracking-tight font-semibold",
+    "body": "text-base leading-relaxed font-normal",
+    "small": "text-sm uppercase tracking-[0.2em]"
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "Generous. Use p-6, p-8, p-12 for containers.",
+    "grid_system": "Bento Grid (Marketing Pages) and Control Room Grid (Dashboard)",
+    "container_padding": "px-6 md:px-12",
+    "radius": "rounded-2xl for large marketing blocks, rounded-lg for dashboard widgets",
+    "alignment": "Optical alignment prioritized. Avoid center-everything default; use strong left-alignments for tension."
+  },
+  "components": {
+    "chat_interface": {
+      "style": "Minimalist, no borders on main chat, stark contrast",
+      "user_bubble": "bg-[#FF4500]/10 border border-[#FF4500]/30 text-white rounded-2xl rounded-tr-sm p-4",
+      "ai_bubble": "bg-transparent text-[#E4E4E7] p-4 font-body leading-loose",
+      "input_area": "bg-[#141414] border border-[#27272A] rounded-full px-6 py-4 focus-within:border-[#FF4500] focus-within:ring-1 focus-within:ring-[#FF4500] flex items-center gap-3"
+    },
+    "learning_tracks": {
+      "style": "Bento-style Glassmorphism cards with sharp inner borders",
+      "classes": "bg-[#141414]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:border-[#FF4500]/50 transition-colors cursor-pointer group relative overflow-hidden",
+      "image_treatment": "Images inside tracks should have max overlay opacity bg-black/50 or subtle gradients to preserve image visibility while keeping text readable."
+    },
+    "buttons": {
+      "primary": "bg-[#FF4500] text-white font-bold rounded-full px-8 py-3 hover:bg-[#E03E00] hover:scale-105 transition-all shadow-[0_0_20px_rgba(255,69,0,0.3)] flex items-center justify-center gap-2",
+      "secondary": "bg-transparent text-white border border-white/20 rounded-full px-8 py-3 hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
+    },
+    "navigation": {
+      "style": "Crystal Glass sticky header. bg-black/60 backdrop-blur-xl border-b border-white/10"
+    }
+  },
+  "images_and_media": [
+    {
+      "category": "hero_background",
+      "url": "https://images.unsplash.com/photo-1762278805150-a1bf79216b9d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwzfHxuZW9uJTIwb3JhbmdlJTIwYWJzdHJhY3QlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NzM3NjU5MHww&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract neon orange and purple streaks on dark background for the landing page hero section."
+    },
+    {
+      "category": "ai_avatar",
+      "url": "https://images.unsplash.com/photo-1739288717700-c2673866705e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwzfHxnbG93aW5nJTIwc3BoZXJlJTIwZGFya3xlbnwwfHx8fDE3NzczNzY1OTB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Glowing blue abstract sphere on black, representing the AI mentor entity in the chat."
+    },
+    {
+      "category": "track_marketing",
+      "url": "https://images.unsplash.com/photo-1686061593269-420785fb8fa0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHw0fHxkaWdpdGFsJTIwbWFya2V0aW5nJTIwc3RyYXRlZ3l8ZW58MHx8fHwxNzc3Mzc2NTkxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Digital marketing track cover image. Screen with metrics."
+    },
+    {
+      "category": "track_affiliation",
+      "url": "https://images.pexels.com/photos/14314638/pexels-photo-14314638.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Network nodes illustrating digital connections and affiliation networks."
+    }
+  ],
+  "accessibility_and_motion": {
+    "focus_states": "focus:outline-none focus:ring-2 focus:ring-[#FF4500] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]",
+    "hover_states": "hover:opacity-80 transition-opacity duration-200",
+    "animations": "Use Framer Motion for page transitions, stagger children in the learning tracks grid. Buttons should have micro-interactions (scale-105 on hover)."
+  },
+  "instructions_to_main_agent": [
+    "Install and use @phosphor-icons/react for sharp, high-end dashboard icons (Duotone or Regular weight).",
+    "Since we use .js and not .tsx, ensure all React components are written in standard JSX/JS syntax. Do not add TS types.",
+    "Implement the landing page with custom HTML/Tailwind for maximum creative freedom, using the 'hero_background' image overlay with bg-black/50.",
+    "For the AI Chat interface, use a 'Control Room' layout. The sidebar should be #141414 and the main chat area #0A0A0A.",
+    "The AI Mentor must support markdown rendering (use react-markdown) for Portuguese text, code, lists, and bold strategies.",
+    "Use Shadcn UI for the Auth flow, tabs, and modals, heavily overriding defaults to match the deep blacks and 1px #27272A borders.",
+    "Never use generic Vercel-style cards for the Dashboard; use Bento grid logic with wide gaps (gap-6 or gap-8) and bold visual tension.",
+    "Ensure all text is in Brazilian Portuguese (pt-BR). Use terms like 'Mentoria', 'Trilhas de Aprendizado', 'Indicações'.",
+    "Strictly follow the color contrast guidelines, ensuring all secondary text (#A1A1AA) passes accessibility on the #0A0A0A background.",
+    "Add 'data-testid' to all interactive elements: buttons, links, form inputs, and key sections (e.g. data-testid='chat-input')."
+  ]
+}
