@@ -21,6 +21,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, CheckoutSessionRequest,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +36,19 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALG = "HS256"
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
+STRIPE_API_KEY = os.environ['STRIPE_API_KEY']
+
+# Subscription / Commission config (server-side only, never trust client)
+PREMIUM_PLAN = {
+    "id": "premium_mensal",
+    "name": "MentorIA Premium",
+    "amount": 99.90,
+    "currency": "brl",
+    "duration_days": 30,
+    "description": "Acesso ilimitado ao MentorIA por 30 dias",
+}
+COMMISSION_RATE = 0.15      # 15% recorrente para quem indicou
+FREE_DAILY_LIMIT = 5        # mensagens/dia no plano free
 
 app = FastAPI(title="MentorIA - Mentoria de Marketing Digital")
 api = APIRouter(prefix="/api")
@@ -167,6 +183,74 @@ Comece toda nova conversa entendendo o contexto do aluno (nicho, nível, meta) s
 
 
 # ---------------------------------------------------------------------------
+# Subscription helpers
+# ---------------------------------------------------------------------------
+async def _is_premium(user_id: str) -> bool:
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "premium_until": 1})
+    pu = u.get("premium_until") if u else None
+    if not pu:
+        return False
+    try:
+        return datetime.fromisoformat(pu) > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+async def _today_usage(user_id: str) -> int:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return await db.daily_usage.count_documents({"user_id": user_id, "day": today})
+
+
+async def _activate_premium(user_id: str, days: int = 30):
+    """Extend premium_until: if active, add to existing; else from now."""
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        return
+    now = datetime.now(timezone.utc)
+    current = user.get("premium_until")
+    base = now
+    if current:
+        try:
+            cur_dt = datetime.fromisoformat(current)
+            if cur_dt > now:
+                base = cur_dt
+        except Exception:
+            pass
+    new_until = (base + timedelta(days=days)).isoformat()
+    await db.users.update_one({"id": user_id}, {"$set": {"premium_until": new_until}})
+    return new_until
+
+
+async def _credit_referrer_commission(payer_user_id: str, payment_amount: float, session_id: str):
+    """Credit referrer (if any) with COMMISSION_RATE of payment_amount."""
+    payer = await db.users.find_one({"id": payer_user_id}, {"_id": 0})
+    if not payer or not payer.get("referred_by"):
+        return None
+    referrer = await db.users.find_one({"referral_code": payer["referred_by"]}, {"_id": 0})
+    if not referrer:
+        return None
+    # Idempotent: skip if commission already exists for this session
+    existing = await db.commissions.find_one({"session_id": session_id})
+    if existing:
+        return None
+    commission = {
+        "id": str(uuid.uuid4()),
+        "referrer_user_id": referrer["id"],
+        "payer_user_id": payer_user_id,
+        "payer_name": payer.get("name"),
+        "payer_email": payer.get("email"),
+        "amount": round(payment_amount * COMMISSION_RATE, 2),
+        "rate": COMMISSION_RATE,
+        "currency": PREMIUM_PLAN["currency"],
+        "session_id": session_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "earned",  # earned | paid_out
+    }
+    await db.commissions.insert_one(dict(commission))
+    return commission
+
+
+# ---------------------------------------------------------------------------
 # Auth Endpoints
 # ---------------------------------------------------------------------------
 @api.post("/auth/register", response_model=AuthOut)
@@ -253,6 +337,17 @@ async def send_chat_message(data: ChatMessageIn, user: dict = Depends(get_curren
     if not data.content.strip():
         raise HTTPException(400, "Mensagem vazia")
 
+    # ---- Plan / quota gate ----------------------------------------------
+    is_premium = await _is_premium(user["id"])
+    if not is_premium:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        used = await db.daily_usage.count_documents({"user_id": user["id"], "day": today})
+        if used >= FREE_DAILY_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Você atingiu o limite diário de {FREE_DAILY_LIMIT} mensagens do plano Free. Faça upgrade pra continuar conversando ilimitado.",
+            )
+
     now = datetime.now(timezone.utc).isoformat()
     session_id = data.session_id
 
@@ -310,6 +405,14 @@ async def send_chat_message(data: ChatMessageIn, user: dict = Depends(get_curren
     }
     await db.chat_messages.insert_one(dict(ai_msg))
     await db.chat_sessions.update_one({"id": session_id}, {"$set": {"updated_at": ai_msg["created_at"]}})
+
+    # Track daily usage for free users (count user messages only)
+    if not is_premium:
+        await db.daily_usage.insert_one({
+            "user_id": user["id"],
+            "day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "ts": ai_msg["created_at"],
+        })
 
     return SendMessageOut(
         session_id=session_id,
@@ -459,10 +562,152 @@ async def list_prompts():
 @api.get("/referral/me")
 async def my_referral(user: dict = Depends(get_current_user)):
     count = await db.users.count_documents({"referred_by": user["referral_code"]})
+    # Earnings from commissions collection
+    cursor = db.commissions.find({"referrer_user_id": user["id"]}, {"_id": 0}).sort("created_at", -1)
+    commissions = await cursor.to_list(500)
+    total_earned = round(sum(c["amount"] for c in commissions), 2)
+    pending = round(sum(c["amount"] for c in commissions if c.get("status") == "earned"), 2)
+    paid = round(sum(c["amount"] for c in commissions if c.get("status") == "paid_out"), 2)
     return {
         "referral_code": user["referral_code"],
         "total_referred": count,
+        "commission_rate": COMMISSION_RATE,
+        "total_earned": total_earned,
+        "pending": pending,
+        "paid": paid,
+        "currency": PREMIUM_PLAN["currency"],
+        "commissions": commissions[:50],
     }
+
+
+# ---------------------------------------------------------------------------
+# Subscription / Payments (Stripe)
+# ---------------------------------------------------------------------------
+class CheckoutIn(BaseModel):
+    origin_url: str
+
+
+@api.get("/subscription/plan")
+async def get_plan():
+    """Public: returns the public plan config the frontend can render."""
+    return {
+        **PREMIUM_PLAN,
+        "free_daily_limit": FREE_DAILY_LIMIT,
+        "commission_rate": COMMISSION_RATE,
+    }
+
+
+@api.get("/subscription/me")
+async def my_subscription(user: dict = Depends(get_current_user)):
+    is_premium = await _is_premium(user["id"])
+    used = await _today_usage(user["id"])
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "premium_until": 1})
+    return {
+        "plan": "premium" if is_premium else "free",
+        "premium_until": (fresh or {}).get("premium_until"),
+        "free_daily_limit": FREE_DAILY_LIMIT,
+        "messages_used_today": used,
+        "messages_remaining_today": max(0, FREE_DAILY_LIMIT - used) if not is_premium else None,
+    }
+
+
+@api.post("/subscription/checkout")
+async def create_subscription_checkout(
+    payload: CheckoutIn,
+    user: dict = Depends(get_current_user),
+):
+    origin = payload.origin_url.rstrip("/")
+    success_url = f"{origin}/app/upgrade?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/app/upgrade?canceled=1"
+
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
+
+    metadata = {
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "plan_id": PREMIUM_PLAN["id"],
+        "referred_by": user.get("referred_by") or "",
+    }
+    req = CheckoutSessionRequest(
+        amount=float(PREMIUM_PLAN["amount"]),
+        currency=PREMIUM_PLAN["currency"],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata=metadata,
+    )
+    session = await stripe_checkout.create_checkout_session(req)
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "session_id": session.session_id,
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "amount": float(PREMIUM_PLAN["amount"]),
+        "currency": PREMIUM_PLAN["currency"],
+        "plan_id": PREMIUM_PLAN["id"],
+        "metadata": metadata,
+        "status": "initiated",
+        "payment_status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return {"url": session.url, "session_id": session.session_id}
+
+
+@api.get("/subscription/checkout/status/{session_id}")
+async def checkout_status(session_id: str, user: dict = Depends(get_current_user)):
+    tx = await db.payment_transactions.find_one({"session_id": session_id, "user_id": user["id"]}, {"_id": 0})
+    if not tx:
+        raise HTTPException(404, "Sessão de pagamento não encontrada")
+
+    # If already finalized, return cached
+    if tx.get("payment_status") == "paid":
+        return {"status": tx.get("status"), "payment_status": "paid", "premium_until": (await db.users.find_one({"id": user["id"]}, {"_id": 0})).get("premium_until")}
+
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url="")
+    status = await stripe_checkout.get_checkout_status(session_id)
+
+    update = {
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": update})
+
+    premium_until = None
+    if status.payment_status == "paid" and tx.get("payment_status") != "paid":
+        # Activate premium and credit referrer (idempotent)
+        premium_until = await _activate_premium(user["id"], days=PREMIUM_PLAN["duration_days"])
+        await _credit_referrer_commission(user["id"], float(PREMIUM_PLAN["amount"]), session_id)
+
+    return {
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "premium_until": premium_until or (await db.users.find_one({"id": user["id"]}, {"_id": 0})).get("premium_until"),
+    }
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    signature = request.headers.get("Stripe-Signature", "")
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url="")
+    try:
+        ev = await stripe_checkout.handle_webhook(body, signature)
+    except Exception as e:
+        logger.exception("Stripe webhook error: %s", e)
+        raise HTTPException(400, "Invalid webhook")
+
+    if ev.payment_status == "paid" and ev.session_id:
+        tx = await db.payment_transactions.find_one({"session_id": ev.session_id})
+        if tx and tx.get("payment_status") != "paid":
+            await db.payment_transactions.update_one(
+                {"session_id": ev.session_id},
+                {"$set": {"payment_status": "paid", "status": "complete", "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+            await _activate_premium(tx["user_id"], days=PREMIUM_PLAN["duration_days"])
+            await _credit_referrer_commission(tx["user_id"], float(tx["amount"]), ev.session_id)
+    return {"received": True}
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +737,10 @@ async def on_startup():
     await db.users.create_index("referral_code", unique=True)
     await db.chat_sessions.create_index([("user_id", 1), ("updated_at", -1)])
     await db.chat_messages.create_index([("session_id", 1), ("created_at", 1)])
+    await db.daily_usage.create_index([("user_id", 1), ("day", 1)])
+    await db.payment_transactions.create_index("session_id", unique=True)
+    await db.commissions.create_index("session_id", unique=True)
+    await db.commissions.create_index([("referrer_user_id", 1), ("created_at", -1)])
 
     # Seed test user (idempotent)
     test_email = "teste@mentoria.com"

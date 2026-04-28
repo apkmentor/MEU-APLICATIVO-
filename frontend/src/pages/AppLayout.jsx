@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  ChatCircleDots, GraduationCap, ShareNetwork, SignOut, House,
+  ChatCircleDots, GraduationCap, ShareNetwork, SignOut, House, Crown,
 } from "@phosphor-icons/react";
 import { useAuth } from "../context/AuthContext";
 import Logo from "../components/Logo";
@@ -9,6 +9,7 @@ const NAV = [
   { to: "/app/chat", label: "Chat", icon: ChatCircleDots },
   { to: "/app/trilhas", label: "Trilhas", icon: GraduationCap },
   { to: "/app/indicar", label: "Indicar", icon: ShareNetwork },
+  { to: "/app/upgrade", label: "Premium", icon: Crown },
 ];
 
 export default function AppLayout() {

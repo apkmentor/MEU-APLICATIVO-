@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  PaperPlaneTilt, Plus, Trash, Sparkle, Lightning, Robot,
+  PaperPlaneTilt, Plus, Trash, Sparkle, Lightning, Robot, Crown,
 } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +16,7 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState([]);
   const [messages, setMessages] = useState([]);
   const [prompts, setPrompts] = useState([]);
+  const [sub, setSub] = useState(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
@@ -26,9 +27,19 @@ export default function ChatPage() {
     setSessions(data);
   };
 
+  const refreshSub = async () => {
+    try {
+      const { data } = await api.get("/subscription/me");
+      setSub(data);
+    } catch {
+      // ignore
+    }
+  };
+
   // initial load
   useEffect(() => {
     refreshSessions();
+    refreshSub();
     api.get("/prompts").then((r) => setPrompts(r.data));
   }, []);
 
@@ -88,15 +99,34 @@ export default function ChatPage() {
         navigate(`/app/chat/${data.session_id}`, { replace: true });
       }
       refreshSessions();
+      refreshSub();
     } catch (e) {
-      setMessages((m) => [
-        ...m,
-        {
-          id: `err-${Date.now()}`, role: "assistant",
-          content: "**Erro:** não consegui responder agora. Tente novamente em instantes.",
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const status = e.response?.status;
+      const detail = e.response?.data?.detail;
+      if (status === 402) {
+        setMessages((m) => [
+          ...m.filter((x) => x.id !== tempUser.id),
+          { ...tempUser, id: `u-${Date.now()}` },
+          {
+            id: `paywall-${Date.now()}`, role: "assistant",
+            content:
+              `**Limite diário atingido.** ⚡\n\n` +
+              (typeof detail === "string" ? detail : "Você atingiu o limite diário do plano Free.") +
+              `\n\n👉 [Fazer upgrade pra Premium](#upgrade) e desbloquear chat ilimitado.`,
+            created_at: new Date().toISOString(),
+            paywall: true,
+          },
+        ]);
+      } else {
+        setMessages((m) => [
+          ...m,
+          {
+            id: `err-${Date.now()}`, role: "assistant",
+            content: "**Erro:** não consegui responder agora. Tente novamente em instantes.",
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      }
     } finally {
       setSending(false);
     }
@@ -163,10 +193,29 @@ export default function ChatPage() {
           <div className="w-9 h-9 rounded-lg bg-[#FF4500]/15 border border-[#FF4500]/30 flex items-center justify-center">
             <Robot size={18} weight="duotone" className="text-[#FF4500]" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="font-display font-bold text-base">MentorIA</div>
             <div className="text-xs text-[#A1A1AA]">Mentor de Marketing Digital · gpt-5.2</div>
           </div>
+          {sub && sub.plan === "free" && (
+            <button
+              onClick={() => navigate("/app/upgrade")}
+              data-testid="chat-upgrade-cta"
+              className="hidden md:flex items-center gap-2 bg-[#FF4500]/10 border border-[#FF4500]/40 text-[#FF4500] hover:bg-[#FF4500]/20 rounded-full px-4 py-2 text-xs font-semibold transition-colors"
+              title={`${sub.messages_remaining_today ?? 0}/${sub.free_daily_limit} mensagens restantes hoje`}
+            >
+              <Crown size={14} weight="fill" />
+              {sub.messages_remaining_today ?? 0}/{sub.free_daily_limit} hoje · Upgrade
+            </button>
+          )}
+          {sub && sub.plan === "premium" && (
+            <div
+              className="hidden md:flex items-center gap-2 bg-[#10B981]/10 border border-[#10B981]/40 text-[#10B981] rounded-full px-4 py-2 text-xs font-semibold"
+              data-testid="chat-premium-badge"
+            >
+              <Crown size={14} weight="fill" /> Premium
+            </div>
+          )}
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto" data-testid="chat-messages">
@@ -230,6 +279,7 @@ export default function ChatPage() {
 }
 
 function MessageBubble({ message }) {
+  const navigate = useNavigate();
   const isUser = message.role === "user";
   if (isUser) {
     return (
@@ -246,7 +296,37 @@ function MessageBubble({ message }) {
         <Robot size={16} weight="duotone" className="text-[#FF4500]" />
       </div>
       <div className="prose-mentor flex-1 min-w-0">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ href, children, ...rest }) => {
+              if (href === "#upgrade") {
+                return (
+                  <a
+                    {...rest}
+                    href="#upgrade"
+                    onClick={(e) => { e.preventDefault(); navigate("/app/upgrade"); }}
+                    data-testid="paywall-upgrade-link"
+                  >
+                    {children}
+                  </a>
+                );
+              }
+              return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>;
+            },
+          }}
+        >
+          {message.content}
+        </ReactMarkdown>
+        {message.paywall && (
+          <button
+            onClick={() => navigate("/app/upgrade")}
+            data-testid="paywall-upgrade-btn"
+            className="mt-3 inline-flex items-center gap-2 bg-[#FF4500] text-white font-bold rounded-full px-5 py-2.5 hover:bg-[#E03E00] transition-all text-sm"
+          >
+            <Crown size={14} weight="fill" /> Fazer Upgrade
+          </button>
+        )}
       </div>
     </div>
   );

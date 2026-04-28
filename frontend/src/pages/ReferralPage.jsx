@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
-import { Copy, ShareNetwork, Users, Gift, WhatsappLogo, CheckCircle } from "@phosphor-icons/react";
+import { useNavigate } from "react-router-dom";
+import { Copy, ShareNetwork, Users, Gift, WhatsappLogo, CheckCircle, Coins, Crown } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 export default function ReferralPage() {
   const { user } = useAuth();
-  const [stats, setStats] = useState({ referral_code: "", total_referred: 0 });
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    referral_code: "",
+    total_referred: 0,
+    commission_rate: 0.15,
+    total_earned: 0,
+    pending: 0,
+    paid: 0,
+    currency: "brl",
+    commissions: [],
+  });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -13,6 +24,8 @@ export default function ReferralPage() {
   }, []);
 
   const link = `${window.location.origin}/register?ref=${stats.referral_code}`;
+  const fmt = (v) => `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`;
+  const ratePct = `${Math.round((stats.commission_rate || 0.15) * 100)}%`;
 
   const copy = async (text) => {
     try {
@@ -42,6 +55,10 @@ export default function ReferralPage() {
     );
     window.open(`https://wa.me/?text=${msg}`, "_blank");
   };
+
+  // unused-var safeguards
+  void ShareNetwork;
+  void Crown;
 
   return (
     <div className="px-6 md:px-12 py-10 max-w-5xl mx-auto" data-testid="referral-page">
@@ -121,9 +138,9 @@ export default function ReferralPage() {
       {/* How it works */}
       <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5">
         {[
-          { n: "01", title: "Compartilhe seu link", text: "Envie pra amigos, redes ou seu nicho." },
-          { n: "02", title: "Eles criam a conta", text: "O sistema vincula automaticamente como seu indicado." },
-          { n: "03", title: "Sua rede cresce", text: "Acompanhe o número de indicados e construa autoridade." },
+          { n: "01", title: "Compartilhe seu link", text: "Envie pra amigos, redes sociais ou seu nicho." },
+          { n: "02", title: "Eles assinam o Premium", text: "Quem assina pelo seu link te paga comissão automática." },
+          { n: "03", title: `Você ganha ${ratePct} todo mês`, text: "Comissão recorrente enquanto seu indicado for assinante." },
         ].map((s) => (
           <div key={s.n} className="bg-[#141414] border border-[#27272A] rounded-2xl p-6">
             <div className="font-display text-3xl font-black text-[#FF4500]">{s.n}</div>
@@ -131,6 +148,58 @@ export default function ReferralPage() {
             <p className="text-sm text-[#A1A1AA] mt-1">{s.text}</p>
           </div>
         ))}
+      </div>
+
+      {/* Commission history */}
+      <div className="mt-10">
+        <h2 className="font-display text-xl font-bold mb-4">Histórico de comissões</h2>
+        {stats.commissions && stats.commissions.length > 0 ? (
+          <div className="bg-[#141414] border border-[#27272A] rounded-2xl overflow-hidden" data-testid="commissions-list">
+            <div className="grid grid-cols-12 px-5 py-3 border-b border-[#27272A] text-xs uppercase tracking-[0.2em] text-[#52525B] font-bold">
+              <div className="col-span-5">Indicado</div>
+              <div className="col-span-3">Data</div>
+              <div className="col-span-2">Status</div>
+              <div className="col-span-2 text-right">Valor</div>
+            </div>
+            {stats.commissions.map((c) => (
+              <div key={c.id} className="grid grid-cols-12 px-5 py-3 border-b border-[#27272A] text-sm last:border-0">
+                <div className="col-span-5 truncate">
+                  <div className="font-semibold">{c.payer_name || c.payer_email}</div>
+                  <div className="text-xs text-[#52525B] truncate">{c.payer_email}</div>
+                </div>
+                <div className="col-span-3 text-[#A1A1AA] self-center">
+                  {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                </div>
+                <div className="col-span-2 self-center">
+                  <span className={`text-[10px] uppercase tracking-[0.2em] font-bold px-2 py-1 rounded-full ${
+                    c.status === "paid_out"
+                      ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/40"
+                      : "bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/40"
+                  }`}>
+                    {c.status === "paid_out" ? "Pago" : "A receber"}
+                  </span>
+                </div>
+                <div className="col-span-2 text-right self-center font-bold text-[#FF4500]">
+                  {fmt(c.amount)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-[#141414] border border-[#27272A] rounded-2xl p-8 text-center" data-testid="no-commissions">
+            <Coins size={32} weight="duotone" className="text-[#52525B] mx-auto mb-3" />
+            <div className="text-[#A1A1AA] text-sm">
+              Sem comissões ainda. Compartilhe seu link e comece a ganhar.
+            </div>
+            <button
+              onClick={() => navigate("/app/upgrade")}
+              data-testid="referral-upgrade-cta"
+              className="mt-4 text-[#FF4500] hover:underline text-sm font-semibold"
+            >
+              Ver plano Premium →
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-10 text-xs text-[#52525B]">

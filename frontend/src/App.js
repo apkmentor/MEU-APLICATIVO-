@@ -10,6 +10,7 @@ import AppLayout from "./pages/AppLayout";
 import ChatPage from "./pages/ChatPage";
 import { TracksPage, TrackDetailPage } from "./pages/TracksPage";
 import ReferralPage from "./pages/ReferralPage";
+import UpgradePage from "./pages/UpgradePage";
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
               <Route path="trilhas" element={<TracksPage />} />
               <Route path="trilhas/:trackId" element={<TrackDetailPage />} />
               <Route path="indicar" element={<ReferralPage />} />
+              <Route path="upgrade" element={<UpgradePage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
