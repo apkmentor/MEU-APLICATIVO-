@@ -94,7 +94,7 @@ export default function LoginPage() {
           <div className="mt-6 text-sm text-[#A1A1AA] text-center">
             Ainda não tem conta?{" "}
             <Link to="/register" data-testid="goto-register" className="text-[#FF4500] font-semibold hover:underline">
-              Criar conta grátis
+              Criar conta
             </Link>
           </div>
         </div>

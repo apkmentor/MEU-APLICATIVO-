@@ -28,7 +28,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register({ name, email, password, referred_by: referredBy.trim() || null });
-      navigate("/app/chat", { replace: true });
+      navigate("/app/upgrade", { replace: true });
     } catch (e) {
       setErr(formatApiErrorDetail(e.response?.data?.detail) || "Falha ao criar conta.");
     } finally {
@@ -48,7 +48,7 @@ export default function RegisterPage() {
 
         <div className="bg-[#141414] border border-[#27272A] rounded-2xl p-8">
           <h1 className="font-display text-3xl font-black tracking-tight">Crie sua conta</h1>
-          <p className="text-[#A1A1AA] mt-2 text-sm">Acesso grátis ao MentorIA e trilhas completas.</p>
+          <p className="text-[#A1A1AA] mt-2 text-sm">Cadastre-se em segundos e escolha seu plano para liberar o chat.</p>
 
           <form onSubmit={submit} className="mt-7 space-y-4" data-testid="register-form">
             <Field icon={User} label="Nome" testid="register-name-input" value={name} onChange={setName} placeholder="Seu nome" />
@@ -68,7 +68,7 @@ export default function RegisterPage() {
               data-testid="register-submit-btn"
               className="w-full bg-[#FF4500] text-white font-bold rounded-xl px-6 py-3.5 hover:bg-[#E03E00] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? "Criando..." : <>Criar conta grátis <ArrowRight size={16} weight="bold" /></>}
+              {loading ? "Criando..." : <>Criar conta <ArrowRight size={16} weight="bold" /></>}
             </button>
           </form>
 

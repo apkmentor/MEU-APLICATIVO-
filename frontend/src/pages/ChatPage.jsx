@@ -43,6 +43,13 @@ export default function ChatPage() {
     api.get("/prompts").then((r) => setPrompts(r.data));
   }, []);
 
+  // Redirect free users to /app/upgrade so they can subscribe
+  useEffect(() => {
+    if (sub && sub.plan === "free") {
+      navigate("/app/upgrade", { replace: true });
+    }
+  }, [sub, navigate]);
+
   // load messages when sessionId changes
   useEffect(() => {
     if (!sessionId) {
@@ -197,17 +204,6 @@ export default function ChatPage() {
             <div className="font-display font-bold text-base">MentorIA</div>
             <div className="text-xs text-[#A1A1AA]">Mentor de Marketing Digital · gpt-5.2</div>
           </div>
-          {sub && sub.plan === "free" && (
-            <button
-              onClick={() => navigate("/app/upgrade")}
-              data-testid="chat-upgrade-cta"
-              className="hidden md:flex items-center gap-2 bg-[#FF4500]/10 border border-[#FF4500]/40 text-[#FF4500] hover:bg-[#FF4500]/20 rounded-full px-4 py-2 text-xs font-semibold transition-colors"
-              title={`${sub.messages_remaining_today ?? 0}/${sub.free_daily_limit} mensagens restantes hoje`}
-            >
-              <Crown size={14} weight="fill" />
-              {sub.messages_remaining_today ?? 0}/{sub.free_daily_limit} hoje · Upgrade
-            </button>
-          )}
           {sub && sub.plan === "premium" && (
             <div
               className="hidden md:flex items-center gap-2 bg-[#10B981]/10 border border-[#10B981]/40 text-[#10B981] rounded-full px-4 py-2 text-xs font-semibold"

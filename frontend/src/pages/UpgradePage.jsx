@@ -2,33 +2,33 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Crown, Lightning, ChatCircleDots, BookOpen, ShareNetwork, CheckCircle,
-  ArrowLeft, Sparkle, Spinner, XCircle,
+  ArrowLeft, Sparkle, Spinner, XCircle, Trophy,
 } from "@phosphor-icons/react";
 import api, { formatApiErrorDetail } from "../lib/api";
 
 const BENEFITS = [
-  { icon: ChatCircleDots, title: "Mensagens ilimitadas", text: "Converse o quanto quiser com o MentorIA. Sem limite diário." },
-  { icon: Lightning, title: "Respostas com GPT-5.2", text: "Acesso ao modelo mais avançado da OpenAI, em PT-BR." },
-  { icon: BookOpen, title: "Trilhas completas", text: "Todas as lições do básico ao avançado, sempre que precisar." },
-  { icon: ShareNetwork, title: "15% de comissão recorrente", text: "Cada amigo seu que assinar, te paga comissão todo mês." },
+  { icon: ChatCircleDots, title: "Chat ilimitado com a MentorIA", text: "Pergunte o quanto quiser. Sem limite de mensagens." },
+  { icon: Lightning, title: "Modelo GPT-5.2 da OpenAI", text: "Acesso ao melhor modelo de IA do mercado, em PT-BR." },
+  { icon: BookOpen, title: "Trilhas completas (do básico ao avançado)", text: "Marketing, afiliação, infoprodutos e conteúdo." },
+  { icon: ShareNetwork, title: "15% de comissão recorrente", text: "Indique amigos. Ganhe 15% sobre cada assinatura mensal/anual." },
 ];
 
 export default function UpgradePage() {
-  const [plan, setPlan] = useState(null);
+  const [plans, setPlans] = useState([]);
   const [sub, setSub] = useState(null);
+  const [selectedPlan, setSelectedPlan] = useState("annual");
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [polling, setPolling] = useState(false);
-  const [pollResult, setPollResult] = useState(null); // 'paid' | 'expired' | null
+  const [pollResult, setPollResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get("/subscription/plan").then((r) => setPlan(r.data));
+    api.get("/subscription/plans").then((r) => setPlans(r.data.plans));
     api.get("/subscription/me").then((r) => setSub(r.data));
   }, []);
 
-  // Poll on return from Stripe
   useEffect(() => {
     const sid = params.get("session_id");
     if (!sid) return;
@@ -41,7 +41,6 @@ export default function UpgradePage() {
         if (data.payment_status === "paid") {
           setPolling(false);
           setPollResult("paid");
-          // refresh subscription
           api.get("/subscription/me").then((r) => setSub(r.data));
           return;
         }
@@ -50,7 +49,7 @@ export default function UpgradePage() {
           setPollResult("expired");
           return;
         }
-        if (attempts >= 6) {
+        if (attempts >= 8) {
           setPolling(false);
           setPollResult("timeout");
           return;
@@ -62,19 +61,19 @@ export default function UpgradePage() {
       }
     };
     poll();
-    // remove session_id from url
     const next = new URLSearchParams(params);
     next.delete("session_id");
     setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const startCheckout = async () => {
+  const startCheckout = async (plan_id) => {
     setErrorMsg("");
     setLoadingCheckout(true);
     try {
       const { data } = await api.post("/subscription/checkout", {
         origin_url: window.location.origin,
+        plan_id,
       });
       window.location.href = data.url;
     } catch (e) {
@@ -83,13 +82,19 @@ export default function UpgradePage() {
     }
   };
 
+  const fmt = (v) => `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`;
   const isPremium = sub?.plan === "premium";
   const canceled = params.get("canceled") === "1";
 
+  const monthly = plans.find((p) => p.id === "monthly");
+  const annual = plans.find((p) => p.id === "annual");
+  const annualMonthlyEquiv = annual ? annual.amount / 12 : 0;
+  const annualSavings = monthly && annual ? (monthly.amount * 12 - annual.amount).toFixed(2).replace(".", ",") : "0,00";
+
   return (
-    <div className="px-6 md:px-12 py-10 max-w-5xl mx-auto" data-testid="upgrade-page">
+    <div className="px-6 md:px-12 py-10 max-w-6xl mx-auto" data-testid="upgrade-page">
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => navigate("/app/chat")}
         className="flex items-center gap-2 text-sm text-[#A1A1AA] hover:text-white mb-6"
         data-testid="upgrade-back-btn"
       >
@@ -101,10 +106,13 @@ export default function UpgradePage() {
           <Crown size={24} weight="duotone" className="text-[#FF4500]" />
         </div>
         <div>
-          <div className="text-xs uppercase tracking-[0.3em] text-[#FF4500] font-bold mb-1">// Plano Premium</div>
+          <div className="text-xs uppercase tracking-[0.3em] text-[#FF4500] font-bold mb-1">// Planos Premium</div>
           <h1 className="font-display text-3xl md:text-5xl font-black tracking-tighter">
             Acesso <span className="text-[#FF4500]">ilimitado.</span>
           </h1>
+          <p className="text-[#A1A1AA] mt-2 max-w-2xl">
+            Escolha seu plano e libere o chat com a MentorIA + todas as trilhas.
+          </p>
         </div>
       </div>
 
@@ -118,9 +126,16 @@ export default function UpgradePage() {
       {pollResult === "paid" && (
         <div className="mt-6 flex items-center gap-3 bg-[#10B981]/10 border border-[#10B981]/40 rounded-xl p-4" data-testid="upgrade-success">
           <CheckCircle size={20} weight="fill" className="text-[#10B981]" />
-          <div className="text-sm text-[#E4E4E7]">
+          <div className="text-sm text-[#E4E4E7] flex-1">
             <strong className="text-[#10B981]">Pagamento confirmado!</strong> Seu plano Premium está ativo.
           </div>
+          <button
+            onClick={() => navigate("/app/chat")}
+            className="text-sm bg-[#10B981] text-white font-bold rounded-full px-4 py-2 hover:bg-[#0e9c70] transition-colors"
+            data-testid="upgrade-go-chat-btn"
+          >
+            Ir pro chat →
+          </button>
         </div>
       )}
       {(pollResult === "expired" || pollResult === "error" || pollResult === "timeout") && (
@@ -135,106 +150,98 @@ export default function UpgradePage() {
         </div>
       )}
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Plan card */}
-        <div
-          className="lg:col-span-3 rounded-2xl p-8 border border-[#FF4500]/30 relative overflow-hidden"
-          style={{
-            background: "radial-gradient(ellipse at top right, rgba(255,69,0,0.18), transparent 60%), #141414",
-          }}
-        >
-          <div className="text-xs uppercase tracking-[0.2em] text-[#FF4500] font-bold flex items-center gap-2">
-            <Sparkle size={12} weight="fill" /> Recomendado
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="font-display text-5xl md:text-6xl font-black tracking-tighter">
-              R$ {plan ? plan.amount.toFixed(2).replace(".", ",") : "—"}
+      {isPremium && (
+        <div className="mt-6 bg-[#10B981]/10 border border-[#10B981]/40 rounded-xl p-5 flex items-center gap-3" data-testid="already-premium">
+          <CheckCircle size={22} weight="fill" className="text-[#10B981]" />
+          <div className="text-sm flex-1">
+            <strong className="text-[#10B981]">Plano {sub.active_plan_id === "annual" ? "Anual" : "Mensal"} ativo.</strong>
+            <span className="text-[#A1A1AA]">
+              {" "}Válido até{" "}
+              {sub.premium_until ? new Date(sub.premium_until).toLocaleDateString("pt-BR") : "—"}.
             </span>
-            <span className="text-[#A1A1AA] text-sm">/mês</span>
           </div>
-          <div className="text-sm text-[#A1A1AA] mt-1">
-            Renove a cada 30 dias. Cancele quando quiser.
-          </div>
-
-          <div className="mt-6 space-y-3">
-            {BENEFITS.map((b, i) => {
-              const Icon = b.icon;
-              return (
-                <div key={i} className="flex items-start gap-3" data-testid={`benefit-${i}`}>
-                  <div className="w-8 h-8 shrink-0 rounded-lg bg-[#FF4500]/15 border border-[#FF4500]/30 flex items-center justify-center">
-                    <Icon size={16} weight="duotone" className="text-[#FF4500]" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm">{b.title}</div>
-                    <div className="text-sm text-[#A1A1AA]">{b.text}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {isPremium ? (
-            <div className="mt-7 bg-[#10B981]/10 border border-[#10B981]/40 rounded-xl p-4 flex items-center gap-3" data-testid="already-premium">
-              <CheckCircle size={20} weight="fill" className="text-[#10B981]" />
-              <div className="text-sm">
-                <strong className="text-[#10B981]">Plano ativo.</strong>
-                <span className="text-[#A1A1AA]">
-                  {" "}Válido até{" "}
-                  {sub.premium_until
-                    ? new Date(sub.premium_until).toLocaleDateString("pt-BR")
-                    : "—"}
-                  .
-                </span>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={startCheckout}
-              disabled={loadingCheckout}
-              data-testid="upgrade-checkout-btn"
-              className="mt-7 w-full bg-[#FF4500] text-white font-bold rounded-xl px-6 py-4 hover:bg-[#E03E00] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(255,69,0,0.4)]"
-            >
-              {loadingCheckout ? (
-                <><Spinner size={18} className="animate-spin" /> Abrindo checkout...</>
-              ) : (
-                <><Crown size={18} weight="fill" /> Assinar agora — R$ {plan ? plan.amount.toFixed(2).replace(".", ",") : "—"}</>
-              )}
-            </button>
-          )}
-
-          {errorMsg && (
-            <div className="mt-3 text-sm text-[#EF4444] bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg px-3 py-2" data-testid="upgrade-error">
-              {errorMsg}
-            </div>
-          )}
-
-          <div className="mt-3 text-[10px] text-[#52525B] uppercase tracking-[0.2em] text-center">
-            Pagamento processado por Stripe · Modo teste
-          </div>
+          <button
+            onClick={() => navigate("/app/chat")}
+            className="text-sm bg-[#FF4500] text-white font-bold rounded-full px-5 py-2 hover:bg-[#E03E00] transition-colors"
+            data-testid="go-to-chat-btn"
+          >
+            Ir pro chat
+          </button>
         </div>
+      )}
 
-        {/* Free vs Premium */}
-        <div className="lg:col-span-2 rounded-2xl border border-[#27272A] p-7 bg-[#141414]">
-          <h3 className="font-display text-lg font-bold">Free vs Premium</h3>
-          <div className="mt-4 space-y-3 text-sm">
-            <Compare label="Mensagens diárias" free={`${plan?.free_daily_limit || 5}/dia`} premium="Ilimitadas" />
-            <Compare label="Modelo de IA" free="GPT-5.2" premium="GPT-5.2" />
-            <Compare label="Trilhas de aprendizado" free="Acesso completo" premium="Acesso completo" />
-            <Compare label="Histórico de conversas" free="Sim" premium="Sim" />
-            <Compare label="Comissão de indicação" free="Sim" premium="Sim" />
-          </div>
+      {/* Plan cards */}
+      {!isPremium && (
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Monthly */}
+          {monthly && (
+            <PlanCard
+              plan={monthly}
+              selected={selectedPlan === "monthly"}
+              onSelect={() => setSelectedPlan("monthly")}
+              onSubscribe={() => startCheckout("monthly")}
+              loading={loadingCheckout}
+              testid="plan-monthly"
+              priceLabel={fmt(monthly.amount)}
+              periodLabel={`/${monthly.billing_period}`}
+              equivalencyText={null}
+            />
+          )}
+          {/* Annual */}
+          {annual && (
+            <PlanCard
+              plan={annual}
+              selected={selectedPlan === "annual"}
+              onSelect={() => setSelectedPlan("annual")}
+              onSubscribe={() => startCheckout("annual")}
+              loading={loadingCheckout}
+              highlight
+              badge={annual.savings_label}
+              testid="plan-annual"
+              priceLabel={fmt(annual.amount)}
+              periodLabel={`/${annual.billing_period}`}
+              equivalencyText={`Equivalente a R$ ${annualMonthlyEquiv.toFixed(2).replace(".", ",")} / mês · economia de R$ ${annualSavings} no ano`}
+            />
+          )}
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="mt-4 text-sm text-[#EF4444] bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg px-3 py-2" data-testid="upgrade-error">
+          {errorMsg}
+        </div>
+      )}
+
+      {/* Benefits */}
+      <div className="mt-12">
+        <h2 className="font-display text-2xl font-bold">O que vem incluso</h2>
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {BENEFITS.map((b, i) => {
+            const Icon = b.icon;
+            return (
+              <div key={i} className="bg-[#141414] border border-[#27272A] rounded-2xl p-5 flex items-start gap-4" data-testid={`benefit-${i}`}>
+                <div className="w-10 h-10 shrink-0 rounded-lg bg-[#FF4500]/15 border border-[#FF4500]/30 flex items-center justify-center">
+                  <Icon size={20} weight="duotone" className="text-[#FF4500]" />
+                </div>
+                <div>
+                  <div className="font-display font-bold">{b.title}</div>
+                  <div className="text-sm text-[#A1A1AA] mt-1">{b.text}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Earn back via referral */}
       <div className="mt-10 rounded-2xl bg-[#141414] border border-[#27272A] p-8">
         <div className="flex items-start gap-3">
-          <ShareNetwork size={28} weight="duotone" className="text-[#FF4500] mt-1" />
+          <Trophy size={28} weight="duotone" className="text-[#FF4500] mt-1" />
           <div>
-            <h3 className="font-display text-xl font-bold">Indique e ganhe 15% recorrente</h3>
+            <h3 className="font-display text-xl font-bold">Sua assinatura pode pagar a si mesma</h3>
             <p className="text-sm text-[#A1A1AA] mt-1 max-w-2xl">
-              Cada amigo que assinar com seu código te paga comissão recorrente todo mês enquanto ele
-              for assinante. Indique 7 amigos e seu plano sai de graça.
+              Indique amigos e ganhe <strong className="text-[#FF4500]">15% de comissão recorrente</strong> sobre cada assinatura
+              que vier do seu link. Indique 7 amigos no plano mensal e seu plano sai de graça.
             </p>
             <button
               onClick={() => navigate("/app/indicar")}
@@ -246,18 +253,71 @@ export default function UpgradePage() {
           </div>
         </div>
       </div>
+
+      <div className="mt-8 text-[10px] text-[#52525B] uppercase tracking-[0.2em] text-center">
+        Pagamento processado por Stripe · Modo teste
+      </div>
     </div>
   );
 }
 
-function Compare({ label, free, premium }) {
+function PlanCard({ plan, selected, onSelect, onSubscribe, loading, highlight, badge, testid, priceLabel, periodLabel, equivalencyText }) {
   return (
-    <div>
-      <div className="text-xs uppercase tracking-[0.2em] text-[#52525B] font-bold mb-1">{label}</div>
-      <div className="flex justify-between gap-3 text-sm">
-        <span className="text-[#A1A1AA]">{free}</span>
-        <span className="text-[#FF4500] font-semibold">{premium}</span>
+    <div
+      onClick={onSelect}
+      data-testid={testid}
+      className={`rounded-2xl p-7 border-2 transition-all cursor-pointer relative overflow-hidden ${
+        selected
+          ? "border-[#FF4500] bg-[#FF4500]/[0.04] shadow-[0_0_40px_rgba(255,69,0,0.15)]"
+          : "border-[#27272A] bg-[#141414] hover:border-[#FF4500]/40"
+      }`}
+      style={
+        highlight
+          ? { background: "radial-gradient(ellipse at top right, rgba(255,69,0,0.18), transparent 60%), #141414" }
+          : {}
+      }
+    >
+      {badge && (
+        <div className="absolute top-4 right-4 text-[10px] uppercase tracking-[0.2em] font-bold bg-[#FF4500] text-white px-2.5 py-1 rounded-full">
+          {badge}
+        </div>
+      )}
+      <div className="flex items-center gap-2 mb-2">
+        <Crown size={18} weight="duotone" className={selected ? "text-[#FF4500]" : "text-[#A1A1AA]"} />
+        <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#A1A1AA]">
+          {plan.label}
+        </div>
       </div>
+      <div className="font-display text-3xl md:text-4xl font-black tracking-tighter">
+        {plan.name}
+      </div>
+      <div className="mt-4 flex items-baseline gap-1">
+        <span className="font-display text-5xl font-black tracking-tighter">{priceLabel}</span>
+        <span className="text-[#A1A1AA] text-sm">{periodLabel}</span>
+      </div>
+      {equivalencyText && (
+        <div className="text-xs text-[#10B981] mt-1 flex items-center gap-1.5">
+          <Sparkle size={12} weight="fill" /> {equivalencyText}
+        </div>
+      )}
+      <p className="text-sm text-[#A1A1AA] mt-3 leading-relaxed">{plan.description}</p>
+
+      <button
+        onClick={(e) => { e.stopPropagation(); onSubscribe(); }}
+        disabled={loading}
+        data-testid={`${testid}-subscribe-btn`}
+        className={`mt-6 w-full font-bold rounded-xl px-6 py-3.5 hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+          highlight
+            ? "bg-[#FF4500] text-white hover:bg-[#E03E00] shadow-[0_0_24px_rgba(255,69,0,0.35)]"
+            : "bg-white text-[#0A0A0A] hover:bg-[#E4E4E7]"
+        }`}
+      >
+        {loading ? (
+          <><Spinner size={16} className="animate-spin" /> Abrindo checkout...</>
+        ) : (
+          <>Assinar {plan.label} →</>
+        )}
+      </button>
     </div>
   );
 }

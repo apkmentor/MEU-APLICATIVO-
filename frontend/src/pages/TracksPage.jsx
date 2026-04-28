@@ -87,13 +87,17 @@ export function TrackDetailPage() {
 
   const startLesson = async (lesson) => {
     sessionStorage.setItem("mentoria_pending_prompt", lesson.prompt);
-    // create the session by sending the message via chat endpoint
     try {
       const { data } = await api.post("/chat/message", { content: lesson.prompt });
       sessionStorage.removeItem("mentoria_pending_prompt");
       navigate(`/app/chat/${data.session_id}`);
-    } catch {
-      navigate("/app/chat");
+    } catch (e) {
+      sessionStorage.removeItem("mentoria_pending_prompt");
+      if (e.response?.status === 402) {
+        navigate("/app/upgrade");
+      } else {
+        navigate("/app/chat");
+      }
     }
   };
 

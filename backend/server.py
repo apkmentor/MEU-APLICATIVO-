@@ -35,20 +35,38 @@ db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALG = "HS256"
-EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
+# Accepts either user's own OpenAI key OR Emergent Universal Key.
+# In production with your own key set OPENAI_API_KEY; locally/dev EMERGENT_LLM_KEY works.
+LLM_API_KEY = os.environ.get('OPENAI_API_KEY') or os.environ.get('EMERGENT_LLM_KEY')
+if not LLM_API_KEY:
+    raise RuntimeError("Defina OPENAI_API_KEY ou EMERGENT_LLM_KEY no .env")
 STRIPE_API_KEY = os.environ['STRIPE_API_KEY']
 
 # Subscription / Commission config (server-side only, never trust client)
-PREMIUM_PLAN = {
-    "id": "premium_mensal",
-    "name": "MentorIA Premium",
-    "amount": 99.90,
-    "currency": "brl",
-    "duration_days": 30,
-    "description": "Acesso ilimitado ao MentorIA por 30 dias",
+PREMIUM_PLANS = {
+    "monthly": {
+        "id": "monthly",
+        "name": "Premium Mensal",
+        "amount": 99.90,
+        "currency": "brl",
+        "duration_days": 30,
+        "label": "Mensal",
+        "description": "Acesso ilimitado ao MentorIA por 30 dias.",
+        "billing_period": "mês",
+    },
+    "annual": {
+        "id": "annual",
+        "name": "Premium Anual",
+        "amount": 197.00,
+        "currency": "brl",
+        "duration_days": 365,
+        "label": "Anual",
+        "description": "Acesso ilimitado ao MentorIA por 12 meses. Economia de mais de 80%.",
+        "billing_period": "ano",
+        "savings_label": "Economize 83%",
+    },
 }
 COMMISSION_RATE = 0.15      # 15% recorrente para quem indicou
-FREE_DAILY_LIMIT = 5        # mensagens/dia no plano free
 
 app = FastAPI(title="MentorIA - Mentoria de Marketing Digital")
 api = APIRouter(prefix="/api")
@@ -221,7 +239,7 @@ async def _activate_premium(user_id: str, days: int = 30):
     return new_until
 
 
-async def _credit_referrer_commission(payer_user_id: str, payment_amount: float, session_id: str):
+async def _credit_referrer_commission(payer_user_id: str, payment_amount: float, session_id: str, currency: str = "brl"):
     """Credit referrer (if any) with COMMISSION_RATE of payment_amount."""
     payer = await db.users.find_one({"id": payer_user_id}, {"_id": 0})
     if not payer or not payer.get("referred_by"):
@@ -241,10 +259,10 @@ async def _credit_referrer_commission(payer_user_id: str, payment_amount: float,
         "payer_email": payer.get("email"),
         "amount": round(payment_amount * COMMISSION_RATE, 2),
         "rate": COMMISSION_RATE,
-        "currency": PREMIUM_PLAN["currency"],
+        "currency": currency,
         "session_id": session_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "earned",  # earned | paid_out
+        "status": "earned",
     }
     await db.commissions.insert_one(dict(commission))
     return commission
@@ -340,13 +358,10 @@ async def send_chat_message(data: ChatMessageIn, user: dict = Depends(get_curren
     # ---- Plan / quota gate ----------------------------------------------
     is_premium = await _is_premium(user["id"])
     if not is_premium:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        used = await db.daily_usage.count_documents({"user_id": user["id"], "day": today})
-        if used >= FREE_DAILY_LIMIT:
-            raise HTTPException(
-                status_code=402,
-                detail=f"Você atingiu o limite diário de {FREE_DAILY_LIMIT} mensagens do plano Free. Faça upgrade pra continuar conversando ilimitado.",
-            )
+        raise HTTPException(
+            status_code=402,
+            detail="Você precisa assinar o MentorIA para usar o chat. Escolha um plano e libere o acesso ilimitado.",
+        )
 
     now = datetime.now(timezone.utc).isoformat()
     session_id = data.session_id
@@ -374,7 +389,7 @@ async def send_chat_message(data: ChatMessageIn, user: dict = Depends(get_curren
     # Build chat with full history (multi-turn)
     history = await db.chat_messages.find({"session_id": session_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
 
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session_id,
+    chat = LlmChat(api_key=LLM_API_KEY, session_id=session_id,
                    system_message=MENTOR_SYSTEM_PROMPT).with_model("openai", "gpt-5.2")
 
     # Replay history into LlmChat by sending only the last user message; LlmChat keeps history per session_id
@@ -405,14 +420,6 @@ async def send_chat_message(data: ChatMessageIn, user: dict = Depends(get_curren
     }
     await db.chat_messages.insert_one(dict(ai_msg))
     await db.chat_sessions.update_one({"id": session_id}, {"$set": {"updated_at": ai_msg["created_at"]}})
-
-    # Track daily usage for free users (count user messages only)
-    if not is_premium:
-        await db.daily_usage.insert_one({
-            "user_id": user["id"],
-            "day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            "ts": ai_msg["created_at"],
-        })
 
     return SendMessageOut(
         session_id=session_id,
@@ -575,7 +582,7 @@ async def my_referral(user: dict = Depends(get_current_user)):
         "total_earned": total_earned,
         "pending": pending,
         "paid": paid,
-        "currency": PREMIUM_PLAN["currency"],
+        "currency": "brl",
         "commissions": commissions[:50],
     }
 
@@ -585,14 +592,14 @@ async def my_referral(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 class CheckoutIn(BaseModel):
     origin_url: str
+    plan_id: str = "monthly"
 
 
-@api.get("/subscription/plan")
-async def get_plan():
-    """Public: returns the public plan config the frontend can render."""
+@api.get("/subscription/plans")
+async def get_plans():
+    """Public: returns the list of plans the frontend can render."""
     return {
-        **PREMIUM_PLAN,
-        "free_daily_limit": FREE_DAILY_LIMIT,
+        "plans": list(PREMIUM_PLANS.values()),
         "commission_rate": COMMISSION_RATE,
     }
 
@@ -600,14 +607,11 @@ async def get_plan():
 @api.get("/subscription/me")
 async def my_subscription(user: dict = Depends(get_current_user)):
     is_premium = await _is_premium(user["id"])
-    used = await _today_usage(user["id"])
-    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "premium_until": 1})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "premium_until": 1, "active_plan_id": 1})
     return {
         "plan": "premium" if is_premium else "free",
+        "active_plan_id": (fresh or {}).get("active_plan_id"),
         "premium_until": (fresh or {}).get("premium_until"),
-        "free_daily_limit": FREE_DAILY_LIMIT,
-        "messages_used_today": used,
-        "messages_remaining_today": max(0, FREE_DAILY_LIMIT - used) if not is_premium else None,
     }
 
 
@@ -616,6 +620,10 @@ async def create_subscription_checkout(
     payload: CheckoutIn,
     user: dict = Depends(get_current_user),
 ):
+    plan = PREMIUM_PLANS.get(payload.plan_id)
+    if not plan:
+        raise HTTPException(400, "Plano inválido")
+
     origin = payload.origin_url.rstrip("/")
     success_url = f"{origin}/app/upgrade?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/app/upgrade?canceled=1"
@@ -625,12 +633,12 @@ async def create_subscription_checkout(
     metadata = {
         "user_id": user["id"],
         "user_email": user["email"],
-        "plan_id": PREMIUM_PLAN["id"],
+        "plan_id": plan["id"],
         "referred_by": user.get("referred_by") or "",
     }
     req = CheckoutSessionRequest(
-        amount=float(PREMIUM_PLAN["amount"]),
-        currency=PREMIUM_PLAN["currency"],
+        amount=float(plan["amount"]),
+        currency=plan["currency"],
         success_url=success_url,
         cancel_url=cancel_url,
         metadata=metadata,
@@ -642,16 +650,17 @@ async def create_subscription_checkout(
         "session_id": session.session_id,
         "user_id": user["id"],
         "user_email": user["email"],
-        "amount": float(PREMIUM_PLAN["amount"]),
-        "currency": PREMIUM_PLAN["currency"],
-        "plan_id": PREMIUM_PLAN["id"],
+        "amount": float(plan["amount"]),
+        "currency": plan["currency"],
+        "plan_id": plan["id"],
+        "duration_days": plan["duration_days"],
         "metadata": metadata,
         "status": "initiated",
         "payment_status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
-    return {"url": session.url, "session_id": session.session_id}
+    return {"url": session.url, "session_id": session.session_id, "plan_id": plan["id"]}
 
 
 @api.get("/subscription/checkout/status/{session_id}")
@@ -662,10 +671,26 @@ async def checkout_status(session_id: str, user: dict = Depends(get_current_user
 
     # If already finalized, return cached
     if tx.get("payment_status") == "paid":
-        return {"status": tx.get("status"), "payment_status": "paid", "premium_until": (await db.users.find_one({"id": user["id"]}, {"_id": 0})).get("premium_until")}
+        u = await db.users.find_one({"id": user["id"]}, {"_id": 0}) or {}
+        return {
+            "status": tx.get("status", "complete"),
+            "payment_status": "paid",
+            "premium_until": u.get("premium_until"),
+            "plan_id": tx.get("plan_id"),
+        }
 
     stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url="")
-    status = await stripe_checkout.get_checkout_status(session_id)
+    try:
+        status = await stripe_checkout.get_checkout_status(session_id)
+    except Exception as e:
+        # Stripe transient errors / unknown session: keep frontend polling instead of 500
+        logger.warning("get_checkout_status failed for %s: %s", session_id, e)
+        return {
+            "status": "open",
+            "payment_status": "pending",
+            "premium_until": None,
+            "plan_id": tx.get("plan_id"),
+        }
 
     update = {
         "status": status.status,
@@ -676,14 +701,19 @@ async def checkout_status(session_id: str, user: dict = Depends(get_current_user
 
     premium_until = None
     if status.payment_status == "paid" and tx.get("payment_status") != "paid":
-        # Activate premium and credit referrer (idempotent)
-        premium_until = await _activate_premium(user["id"], days=PREMIUM_PLAN["duration_days"])
-        await _credit_referrer_commission(user["id"], float(PREMIUM_PLAN["amount"]), session_id)
+        premium_until = await _activate_premium(user["id"], days=tx["duration_days"])
+        await db.users.update_one({"id": user["id"]}, {"$set": {"active_plan_id": tx.get("plan_id")}})
+        await _credit_referrer_commission(user["id"], float(tx["amount"]), session_id, currency=tx.get("currency", "brl"))
+
+    if not premium_until:
+        u = await db.users.find_one({"id": user["id"]}, {"_id": 0}) or {}
+        premium_until = u.get("premium_until")
 
     return {
         "status": status.status,
         "payment_status": status.payment_status,
-        "premium_until": premium_until or (await db.users.find_one({"id": user["id"]}, {"_id": 0})).get("premium_until"),
+        "premium_until": premium_until,
+        "plan_id": tx.get("plan_id"),
     }
 
 
@@ -705,8 +735,9 @@ async def stripe_webhook(request: Request):
                 {"session_id": ev.session_id},
                 {"$set": {"payment_status": "paid", "status": "complete", "updated_at": datetime.now(timezone.utc).isoformat()}},
             )
-            await _activate_premium(tx["user_id"], days=PREMIUM_PLAN["duration_days"])
-            await _credit_referrer_commission(tx["user_id"], float(tx["amount"]), ev.session_id)
+            await _activate_premium(tx["user_id"], days=tx.get("duration_days", 30))
+            await db.users.update_one({"id": tx["user_id"]}, {"$set": {"active_plan_id": tx.get("plan_id")}})
+            await _credit_referrer_commission(tx["user_id"], float(tx["amount"]), ev.session_id, currency=tx.get("currency", "brl"))
     return {"received": True}
 
 

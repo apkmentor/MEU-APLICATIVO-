@@ -59,7 +59,7 @@ export default function LandingPage() {
                 </Link>
                 <Link to="/register" data-testid="nav-register-btn"
                   className="bg-[#FF4500] text-white font-semibold rounded-full px-5 py-2 hover:bg-[#E03E00] transition-all text-sm">
-                  Começar grátis
+                  Assinar agora
                 </Link>
               </>
             )}
@@ -120,9 +120,9 @@ export default function LandingPage() {
             </form>
 
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-[#A1A1AA]">
-              <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Sem cartão de crédito</span>
+              <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Planos a partir de R$ 16,42/mês</span>
               <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Conteúdo 100% PT-BR</span>
-              <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Trilhas do zero ao avançado</span>
+              <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> 15% de comissão por indicação</span>
             </div>
           </div>
         </div>
@@ -181,6 +181,59 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section className="max-w-7xl mx-auto px-6 md:px-12 pb-12">
+        <div className="max-w-3xl mb-10">
+          <div className="text-xs uppercase tracking-[0.3em] text-[#FF4500] font-bold mb-4">// Planos</div>
+          <h2 className="font-display text-3xl md:text-5xl font-black tracking-tighter">
+            Escolha seu plano e <span className="text-[#FF4500]">comece hoje.</span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div
+            onClick={goStart}
+            data-testid="pricing-monthly"
+            className="cursor-pointer bg-[#141414] border border-[#27272A] rounded-2xl p-7 hover:border-[#FF4500]/40 transition-all"
+          >
+            <div className="text-xs uppercase tracking-[0.2em] text-[#A1A1AA] font-bold">Mensal</div>
+            <div className="font-display text-3xl font-black mt-1">Premium Mensal</div>
+            <div className="mt-4 flex items-baseline gap-1">
+              <span className="font-display text-5xl font-black tracking-tighter">R$ 99,90</span>
+              <span className="text-[#A1A1AA] text-sm">/mês</span>
+            </div>
+            <p className="text-sm text-[#A1A1AA] mt-3">Acesso ilimitado por 30 dias. Cancele quando quiser.</p>
+            <div className="mt-6 w-full bg-white text-[#0A0A0A] font-bold rounded-xl px-6 py-3.5 text-center hover:bg-[#E4E4E7] transition-colors">
+              Assinar Mensal →
+            </div>
+          </div>
+          <div
+            onClick={goStart}
+            data-testid="pricing-annual"
+            className="cursor-pointer rounded-2xl p-7 border-2 border-[#FF4500] relative overflow-hidden"
+            style={{
+              background: "radial-gradient(ellipse at top right, rgba(255,69,0,0.18), transparent 60%), #141414",
+            }}
+          >
+            <div className="absolute top-4 right-4 text-[10px] uppercase tracking-[0.2em] font-bold bg-[#FF4500] text-white px-2.5 py-1 rounded-full">
+              Economize 83%
+            </div>
+            <div className="text-xs uppercase tracking-[0.2em] text-[#FF4500] font-bold">Anual · Recomendado</div>
+            <div className="font-display text-3xl font-black mt-1">Premium Anual</div>
+            <div className="mt-4 flex items-baseline gap-1">
+              <span className="font-display text-5xl font-black tracking-tighter">R$ 197</span>
+              <span className="text-[#A1A1AA] text-sm">/ano</span>
+            </div>
+            <div className="text-xs text-[#10B981] mt-1 flex items-center gap-1.5">
+              Equivalente a R$ 16,42/mês
+            </div>
+            <p className="text-sm text-[#A1A1AA] mt-3">Acesso ilimitado por 12 meses. Plano mais escolhido.</p>
+            <div className="mt-6 w-full bg-[#FF4500] text-white font-bold rounded-xl px-6 py-3.5 text-center hover:bg-[#E03E00] transition-colors shadow-[0_0_24px_rgba(255,69,0,0.35)]">
+              Assinar Anual →
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="max-w-7xl mx-auto px-6 md:px-12 pb-28">
         <div
@@ -192,17 +245,17 @@ export default function LandingPage() {
         >
           <div className="relative z-10 max-w-2xl">
             <h2 className="font-display text-3xl md:text-5xl font-black tracking-tighter">
-              Sua primeira venda <span className="text-[#FF4500]">esperando</span> você logar.
+              Sua primeira venda <span className="text-[#FF4500]">esperando</span> você assinar.
             </h2>
             <p className="mt-5 text-[#A1A1AA] text-lg">
-              Crie sua conta grátis e ganhe acesso ao mentor IA, trilhas e prompts vencedores.
+              Crie sua conta, escolha seu plano e ganhe acesso ilimitado ao mentor IA, trilhas e prompts vencedores.
             </p>
             <button
               onClick={goStart}
               data-testid="cta-start-btn"
               className="mt-8 bg-[#FF4500] text-white font-bold rounded-full px-8 py-4 hover:bg-[#E03E00] hover:scale-[1.03] transition-all flex items-center gap-2 shadow-[0_0_30px_rgba(255,69,0,0.4)] glow-primary"
             >
-              Começar agora — é grátis <ArrowRight size={18} weight="bold" />
+              Assinar agora <ArrowRight size={18} weight="bold" />
             </button>
           </div>
         </div>
