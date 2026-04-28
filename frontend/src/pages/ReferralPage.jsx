@@ -14,8 +14,23 @@ export default function ReferralPage() {
 
   const link = `${window.location.origin}/register?ref=${stats.referral_code}`;
 
-  const copy = (text) => {
-    navigator.clipboard.writeText(text);
+  const copy = async (text) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+    } catch {
+      // ignore clipboard rejection (e.g. permission denied in iframe)
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
