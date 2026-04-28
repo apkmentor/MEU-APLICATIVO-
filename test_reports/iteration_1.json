@@ -1,0 +1,48 @@
+{
+  "summary": "End-to-end testing of MentorIA (PT-BR digital marketing AI mentor) completed. Backend: 21/21 pytest tests pass on the public preview URL, including GPT-5.2 chat (single-turn, multi-turn, persistence) via emergentintegrations. Frontend: every requested flow verified via Playwright on the public URL — landing → register → /app/chat redirect, prompt cards, AI streaming response, custom message + multi-turn, sidebar session history, /app/trilhas track list and detail, lesson click creates a chat session and redirects, /app/indicar referral code/link/copy buttons, sidebar logout clears mentoria_token and redirects to /login, ProtectedRoute guards /app/* when unauthenticated, seeded user (teste@mentoria.com / Teste@1234) login works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ReferralPage.jsx (copy-link-btn / copy-code-btn)",
+        "issue": "navigator.clipboard.writeText() promise rejection is unhandled. In environments without clipboard permission (headless / cross-origin iframes) it surfaces an Uncaught runtime error and triggers the React dev error overlay, which then blocks subsequent clicks in the page until the overlay is dismissed. In production build users will not see the overlay, but the unhandled rejection should still be caught and a fallback (e.g. document.execCommand('copy') or a non-blocking toast) added.",
+        "selector": "[data-testid='copy-link-btn'], [data-testid='copy-code-btn']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Wrap navigator.clipboard.writeText calls in ReferralPage.jsx in try/catch (or .catch) so a denied-permission rejection does not crash the page or open the dev error overlay; optionally fall back to a hidden textarea + document.execCommand('copy').",
+    "Note for next iteration: routes are /app/trilhas and /app/indicar (PT) — not /app/tracks and /app/referral as referenced in the original review request. Test ids use suffixes -input / -btn (e.g. register-name-input, login-submit-btn, copy-link-btn) — keep this in mind for future Playwright scripts."
+  ],
+  "critical_code_review_comments": [
+    "server.py: chat history is replayed by re-instantiating LlmChat each request and manually injecting a recap of last 10 turns. Works, but token usage will grow with long sessions; consider truncating or summarising older context.",
+    "server.py: CORS allow_credentials=True with allow_origins='*' (wildcard) is invalid per spec; browsers ignore credentials with wildcard. Set explicit origins via CORS_ORIGINS env when deploying.",
+    "Auth uses JWT (Bearer token in localStorage), not httpOnly cookies — fine for this MVP but flagged for the auth-playbook checklist (no httpOnly cookies, no brute-force lockout, no admin seed update). bcrypt hash format is $2b$ ✓.",
+    "Frontend: api.js uses baseURL = REACT_APP_BACKEND_URL + '/api' (verified). AuthContext stores token under 'mentoria_token' (verified). Logout clears token correctly.",
+    "ReferralPage clipboard call lacks error handling (see frontend_issues)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)",
+    "/app/backend/tests/__init__.py (created)"
+  ],
+  "success_rate": {
+    "backend": "100% (21/21)",
+    "frontend": "100% on functional flows; 1 medium UX bug (clipboard rejection unhandled)"
+  },
+  "test_credentials": "Seeded test user: teste@mentoria.com / Teste@1234. Also dynamically registered TEST_* and test_e2e_* users during testing.",
+  "seed_data_creation": "Backend automatically seeds the test user on startup (verified). Tests create additional TEST_<uuid>@mentoria.com users for isolation; not cleaned up (low volume, MVP).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/backend_test.py — run with `pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. They use REACT_APP_BACKEND_URL from env. Real GPT-5.2 calls happen, so each chat test can take 5-15s. Frontend testid map is captured under `updated_files` and `action_items`. Routes are /app/chat, /app/trilhas, /app/trilhas/:id, /app/indicar. JWT in localStorage as 'mentoria_token'.",
+  "rca of the issue": "Clipboard rejection: navigator.clipboard.writeText returns a Promise; in headless or restricted contexts this Promise rejects with NotAllowedError. ReferralPage.jsx awaits/calls it without .catch, so React surfaces the Uncaught (in promise) error and (in dev mode) the error overlay. Repro: open /app/indicar in a context without clipboard permission and click [data-testid='copy-link-btn']. Mitigation: wrap in try/catch and fall back to document.execCommand('copy') with a textarea, OR ignore the rejection silently if you only need the visual 'Copiado' feedback."
+}
